@@ -32,6 +32,6 @@ Please install the application from [Flipper Zero application catalog](https://d
 Install [uFBT - micro Flipper Build Tool](https://github.com/flipperdevices/flipperzero-ufbt) to get a toolkit for building flipper zero applications. 
 
 - Clone this git repository
-- cd to *ServoTesterApp* content.
+- cd to flipper-esctester.
 - run *ufbt && ufbt launch* with flipper connected. It automatically installs the compiled application into Flipper Zero.
 
