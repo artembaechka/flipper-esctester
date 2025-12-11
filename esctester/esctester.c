@@ -11,29 +11,15 @@
 #define DEFAULT_DUTY 1
 
 #define MIN_WIDTH 1000
-#define DEFAULT_WIDTH 1500
+#define DEFAULT_WIDTH 1000
 #define MAX_WIDTH 2000
 
 #define WIDTH_STEP_SMALL 1
 #define WIDTH_STEP_BIG 10
-#define WIDTH_STEP_AUTO 5
 
 uint16_t pWidth = DEFAULT_WIDTH;
-bool dir = true;
-
-enum Modes {
-    Center,
-    Manual,
-    Auto,
-};
-
-const char* const modes_text[Auto + 1] = {
-    "Center",
-    "Manual",
-    " Auto",
-};
-
-uint8_t mode = Manual;
+bool armed = false;
+// Only Manual mode is supported now
 
 typedef enum {
     EventTypeTick,
@@ -43,9 +29,9 @@ typedef enum {
 typedef struct {
     EventType type;
     InputEvent input;
-} ServoTesterEvent;
+} EscTesterEvent;
 
-static void servotester_draw_callback(Canvas* canvas, void* ctx) {
+static void esctester_draw_callback(Canvas* canvas, void* ctx) {
     UNUSED(ctx);
 
     char temp_str[36];
@@ -66,25 +52,29 @@ static void servotester_draw_callback(Canvas* canvas, void* ctx) {
 
     canvas_draw_str(canvas, 50, 40, temp_str);
 
-    canvas_draw_str(canvas, 50, 50, modes_text[mode]);
+    if(!armed) {
+        canvas_draw_str(canvas, 28, 50, "Press OK for arm");
+    } else {
+        canvas_draw_str(canvas, 50, 50, "Manual");
+    }
 }
 
-static void servotester_input_callback(InputEvent* input_event, void* ctx) {
+static void esctester_input_callback(InputEvent* input_event, void* ctx) {
     furi_assert(ctx);
     FuriMessageQueue* event_queue = ctx;
-    ServoTesterEvent event = {.type = EventTypeInput, .input = *input_event};
+    EscTesterEvent event = {.type = EventTypeInput, .input = *input_event};
     furi_message_queue_put(event_queue, &event, FuriWaitForever);
 }
 
-static void servotester_timer_callback(void* ctx) {
+static void esctester_timer_callback(void* ctx) {
     furi_assert(ctx);
     FuriMessageQueue* event_queue = ctx;
 
-    ServoTesterEvent event = {.type = EventTypeTick};
+    EscTesterEvent event = {.type = EventTypeTick};
     furi_message_queue_put(event_queue, &event, 0);
 }
 
-void servotester_set_servo_pwm(uint32_t freq, uint32_t compare) {
+void esctester_set_servo_pwm(uint32_t freq, uint32_t compare) {
     uint32_t freq_div = 64000000LU / freq;
     uint32_t prescaler = freq_div / 0x10000LU;
     uint32_t period = freq_div / (prescaler + 1);
@@ -94,35 +84,36 @@ void servotester_set_servo_pwm(uint32_t freq, uint32_t compare) {
     LL_TIM_OC_SetCompareCH1(TIM1, compare);
 }
 
-void servotester_update_pwm() {
-    servotester_set_servo_pwm(DEFAULT_FREQ, pWidth * 3.2);
+void esctester_update_pwm() {
+    esctester_set_servo_pwm(DEFAULT_FREQ, pWidth * 3.2);
 }
 
-int32_t servotester_app(void* p) {
+int32_t esctester_app(void* p) {
     UNUSED(p);
 
-    ServoTesterEvent event;
+    EscTesterEvent event;
 
-    FuriMessageQueue* event_queue = furi_message_queue_alloc(8, sizeof(ServoTesterEvent));
+    FuriMessageQueue* event_queue = furi_message_queue_alloc(8, sizeof(EscTesterEvent));
 
     ViewPort* view_port = view_port_alloc();
 
     // callbacks init
-    view_port_draw_callback_set(view_port, servotester_draw_callback, NULL);
-    view_port_input_callback_set(view_port, servotester_input_callback, event_queue);
+    view_port_draw_callback_set(view_port, esctester_draw_callback, NULL);
+    view_port_input_callback_set(view_port, esctester_input_callback, event_queue);
 
     Gui* gui = furi_record_open(RECORD_GUI);
     gui_add_view_port(gui, view_port, GuiLayerFullscreen);
 
     // Timer for automatic mode
     FuriTimer* timer =
-        furi_timer_alloc(servotester_timer_callback, FuriTimerTypePeriodic, event_queue);
+        furi_timer_alloc(esctester_timer_callback, FuriTimerTypePeriodic, event_queue);
     furi_timer_start(timer, furi_ms_to_ticks((1000/DEFAULT_FREQ)*1.5));  // does not make sense update PWM faster than pulse interval lenght. 
 
     //GPIO init
     furi_hal_power_enable_otg(); // Turn 5V
     furi_hal_pwm_start(FuriHalPwmOutputIdTim1PA7, 50, 4); // Init Tim1
-    servotester_set_servo_pwm(DEFAULT_FREQ, pWidth * 3.2); // set our PWM
+    esctester_set_servo_pwm(DEFAULT_FREQ, 0); // start with 0 (safe)
+    view_port_update(view_port);
 
     while(1) {
         furi_check(furi_message_queue_get(event_queue, &event, FuriWaitForever) == FuriStatusOk);
@@ -133,43 +124,29 @@ int32_t servotester_app(void* p) {
             if(event.input.key == InputKeyBack) {
                 break;
             } else if(event.input.key == InputKeyOk && event.input.type == InputTypeRelease) {
-                if(mode == Auto) {
-                    mode = Center;
-                } else {
-                    mode++;
+                if(!armed) {
+                    // Arm sequence: output small test value for 1s, then enable selected value
+                    esctester_set_servo_pwm(DEFAULT_FREQ, 25 * 3.2);
+                    view_port_update(view_port);
+                    furi_delay_ms(1000);
+                    esctester_update_pwm();
+                    armed = true;
                 }
-
-                if(mode == Center) {
-                    pWidthNew = DEFAULT_WIDTH;
-                }
-
-                if(mode == Auto) {
-                    dir = true; // deterministic direction
-                }
-            } else if(mode == Manual && event.input.key == InputKeyLeft && event.input.type == InputTypeRelease) {
+            } else if(event.input.key == InputKeyLeft && event.input.type == InputTypeRelease) {
                 // small step on release for precise setting
                 pWidthNew -= WIDTH_STEP_SMALL;
-            } else if(mode == Manual && event.input.key == InputKeyRight && event.input.type == InputTypeRelease) {
+            } else if(event.input.key == InputKeyRight && event.input.type == InputTypeRelease) {
                 // small step on release for precise setting
                 pWidthNew += WIDTH_STEP_SMALL;
-            } else if(mode == Manual && event.input.key == InputKeyDown) {
+            } else if(event.input.key == InputKeyDown) {
                 // big step on every event for fast scrolling
                 pWidthNew -= WIDTH_STEP_BIG;
-            } else if(mode == Manual && event.input.key == InputKeyUp) {
+            } else if(event.input.key == InputKeyUp) {
                 // big step on every event for fast scrolling
                 pWidthNew += WIDTH_STEP_BIG;
             }
             view_port_update(view_port);
         } else if(event.type == EventTypeTick) {
-            if(mode == Auto) {
-                if (dir) {
-                    pWidthNew += WIDTH_STEP_AUTO;
-                    if (pWidthNew >= MAX_WIDTH) dir = false;
-                } else {
-                    pWidthNew -= WIDTH_STEP_AUTO;
-                    if (pWidthNew <= MIN_WIDTH) dir = true;
-                }
-            }
             view_port_update(view_port);
         }
 
@@ -178,7 +155,7 @@ int32_t servotester_app(void* p) {
 
         if (pWidthNew != pWidth) {
             pWidth = pWidthNew;
-            servotester_update_pwm();
+            esctester_update_pwm();
         }
 	view_port_update(view_port);
     }

@@ -1,8 +1,8 @@
-# Flipper servotester application
+# Flipper esctester application
 
-![Servo tester application screenshot](servotester/assets/Servo_Tester_Manual_mode.png)
+![ESC tester application screenshot](esctester/assets/ESC_Tester_Before_ARM.png) ![ESC tester application screenshot](esctester/assets/ESC_Tester_Manual_mode.png)
 
-This application could be used for testing devices containing standard [RC servo](https://en.wikipedia.org/wiki/Servo_(radio_control)), by generating a [PWM RC servo signal](https://en.wikipedia.org/wiki/Servo_control). 
+This application could be used for testing devices containing standard [ESC](https://en.wikipedia.org/wiki/Motor_controller), by generating a [PWM RC servo signal](https://en.wikipedia.org/wiki/Servo_control) with some edits. 
 
 ## Installation instructions
 
@@ -10,10 +10,11 @@ Please install the application from [Flipper Zero application catalog](https://d
 
 ## Usage
 
-- Connect the Servo PWM input to **A7** Flipper Zero in.
+- Connect the ESC PWM input to **A7** Flipper Zero in.
 - Enable 5V output in the GPIO menu or plug-in USB-C charging cable. (If you're supplying power from an external power source, make sure it has common ground with the flipper GND)
-- Start the Servo Tester app
-- Move servo required positions using controls bellow
+- Start the ESC Tester app
+- Press OK for arm a controller (some controllers needs this)
+- Use arrow keys for edit ESC power
 
 ## Controls
 
@@ -24,7 +25,7 @@ Please install the application from [Flipper Zero application catalog](https://d
 | ◀️     | Left button decreases pulse width by 1 us.   |
 | ▶️     | The right button increases pulse width by 1 us.  |
 | ↩️     | Back button exit application.   |
-| 🔵     | Center button change mode. |
+| 🔵     | Center button arm controller. |
 
 ## Build instructions
 
